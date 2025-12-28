@@ -1,0 +1,70 @@
+{
+  "game": {
+    "name": "Fruit Slice",
+    "type": "2D",
+    "genre": "arcade",
+    "description": "Slice flying fruits with mouse drag, avoid bombs, manage lives and score"
+  },
+  "settings": {
+    "window": {
+      "width": 800,
+      "height": 600
+    },
+    "physics": {
+      "gravity": 300
+    }
+  },
+  "player": {
+    "name": "Player",
+    "health": 3,
+    "abilities": ["slice"]
+  },
+  "entities": {
+    "fruits": [
+      {
+        "name": "Apple",
+        "speed": 100,
+        "behavior": "arc_flight"
+      },
+      {
+        "name": "Banana",
+        "speed": 120,
+        "behavior": "arc_flight"
+      },
+      {
+        "name": "Orange",
+        "speed": 90,
+        "behavior": "arc_flight"
+      },
+      {
+        "name": "Watermelon",
+        "speed": 80,
+        "behavior": "arc_flight"
+      }
+    ],
+    "bombs": [
+      {
+        "name": "Bomb",
+        "speed": 110,
+        "behavior": "arc_flight",
+        "damage": 999
+      }
+    ]
+  },
+  "levels": [
+    {
+      "name": "Endless",
+      "background": "sky",
+      "obstacles": []
+    }
+  ],
+  "logic": {
+    "winCondition": "survive_endless",
+    "loseCondition": "bomb_hit_or_lives_zero",
+    "scoring": {
+      "pointsPerFruit": 1,
+      "comboMultiplier": 1.5,
+      "bombPenalty": 0
+    }
+  }
+}

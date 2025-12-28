@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fruit Slice</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #87CEEB;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            border: 2px solid #333;
+            background: linear-gradient(to bottom, #87CEEB, #98FB98);
+        }
+        #canvas {
+            display: block;
+            background: transparent;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+        }
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        #start-screen { display: flex; }
+        #game-over-screen { display: none; }
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            margin: 10px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover { background: #45a049; }
+        input {
+            padding: 8px;
+            font-size: 16px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div id="score-display">Score: 0</div>
+            <div id="lives-display">Lives: 3</div>
+            <div id="high-score-display">High Score: 0</div>
+        </div>
+        <div id="start-screen">
+            <h1>FRUIT SLICE</h1>
+            <div id="highScoreDisplay">High Score: 0</div>
+            <input type="text" id="playerNameInput" placeholder="Enter your name" />
+            <button id="start-button">Start Game</button>
+            <button id="close-button">Close</button>
+        </div>
+        <div id="game-over-screen">
+            <h1>GAME OVER</h1>
+            <div id="final-score">Final Score: 0</div>
+            <div id="final-high-score">High Score: 0</div>
+            <button id="restart-button">Restart</button>
+            <button id="main-menu-button">Main Menu</button>
+            <button id="close-button-game-over">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const ui = document.getElementById('ui');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const startButton = document.getElementById('start-button');
+        const restartButton = document.getElementById('restart-button');
+        const mainMenuButton = document.getElementById('main-menu-button');
+        const closeButton = document.getElementById('close-button');
+        const closeButtonGameOver = document.getElementById('close-button-game-over');
+        const playerNameInput = document.getElementById('playerNameInput');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+
+        let gameState = 'start';
+        let score = 0;
+        let lives = 3;
+        let highScore = 0;
+        let combo = 0;
+        let fruits = [];
+        let bombs = [];
+        let sliceTrail = [];
+        let isSlicing = false;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let difficultyTimer = 0;
+        let spawnRate = 2.0;
+        let fruitSpeed = 200;
+        let bombChance = 0.1;
+        let playerName = '';
+
+        const fruitTypes = ['apple', 'banana', 'orange', 'watermelon'];
+        const fruitColors = {
+            apple: '#FF0000',
+            banana: '#FFFF00',
+            orange: '#FFA500',
+            watermelon: '#00FF00'
+        };
+
+        // Initialize high score display
+        document.getElementById('high-score-display').textContent = 'High Score: 0';
+
+        // Load game data from localStorage
+        window.addEventListener('DOMContentLoaded', () => {
+            window.parent.postMessage({ type: 'applaa-game-load-data', gameId: 'fruit-slice' }, '*');
+        });
+
+        // Listen for data response
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'applaa-game-data-loaded') {
+                const gameData = event.data.data;
+                if (gameData) {
+                    highScore = gameData.highScore || 0;
+                    document.getElementById('high-score-display').textContent = 'High Score: ' + highScore;
+                    highScoreDisplay.textContent = 'High Score: ' + highScore;
+                    if (gameData.lastPlayerName) {
+                        playerNameInput.value = gameData.lastPlayerName;
+                    }
+                }
+            }
+        });
+
+        function startGame() {
+            playerName = playerNameInput.value.trim() || 'Player';
+            gameState = 'playing';
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            resetGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            combo = 0;
+            fruits = [];
+            bombs = [];
+            sliceTrail = [];
+            spawnTimer = 0;
+            difficultyTimer = 0;
+            spawnRate = 2.0;
+            fruitSpeed = 200;
+            bombChance = 0.1;
+            updateUI();
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'playing') return;
+
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            update(deltaTime);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(deltaTime) {
+            spawnTimer += deltaTime;
+            difficultyTimer += deltaTime;
+
+            // Increase difficulty
+            if (difficultyTimer > 10) {
+                spawnRate = Math.max(0.5, spawnRate - 0.1);
+                fruitSpeed += 10;
+                bombChance = Math.min(0.3, bombChance + 0.02);
+                difficultyTimer = 0;
+            }
+
+            // Spawn entities
+            if (spawnTimer > spawnRate) {
+                spawnEntity();
+                spawnTimer = 0;
+            }
+
+            // Update fruits
+            fruits = fruits.filter(fruit => {
+                fruit.x += fruit.vx * deltaTime;
+                fruit.y += fruit.vy * deltaTime;
+                fruit.vy += 300 * deltaTime; // gravity
+
+                if (fruit.y > 650) {
+                    loseLife();
+                    return false;
+                }
+                return true;
+            });
+
+            // Update bombs
+            bombs = bombs.filter(bomb => {
+                bomb.x += bomb.vx * deltaTime;
+                bomb.y += bomb.vy * deltaTime;
+                bomb.vy += 300 * deltaTime;
+
+                if (bomb.y > 650) {
+                    return false;
+                }
+                return true;
+            });
+
+            // Check slice collisions
+            if (isSlicing && sliceTrail.length > 1) {
+                fruits = fruits.filter(fruit => {
+                    if (isPointNearLine(fruit.x, fruit.y, sliceTrail)) {
+                        sliceFruit();
+                        return false;
+                    }
+                    return true;
+                });
+
+                bombs = bombs.filter(bomb => {
+                    if (isPointNearLine(bomb.x, bomb.y, sliceTrail)) {
+                        gameOver();
+                        return false;
+                    }
+                    return true;
+                });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw fruits
+            fruits.forEach(fruit => {
+                ctx.fillStyle = fruitColors[fruit.type];
+                ctx.beginPath();
+                ctx.arc(fruit.x, fruit.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.stroke();
+            });
+
+            // Draw bombs
+            bombs.forEach(bomb => {
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(bomb.x, bomb.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('💣', bomb.x, bomb.y + 5);
+            });
+
+            // Draw slice trail
+            if (sliceTrail.length > 1) {
+                ctx.strokeStyle = '#FFF';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(sliceTrail[0].x, sliceTrail[0].y);
+                for (let i = 1; i < sliceTrail.length; i++) {
+                    ctx.lineTo(sliceTrail[i].x, sliceTrail[i].y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        function spawnEntity() {
+            const isBomb = Math.random() < bombChance;
+            const x = Math.random() * 600 + 100;
+            const y = 600;
+            const vx = (Math.random() - 0.5) * 200;
+            const vy = -(Math.random() * 200 + 200);
+
+            if (isBomb) {
+                bombs.push({ x, y, vx, vy });
+            } else {
+                const type = fruitTypes[Math.floor(Math.random() * fruitTypes.length)];
+                fruits.push({ x, y, vx, vy, type });
+            }
+        }
+
+        function sliceFruit() {
+            score += 1 + combo;
+            combo += 1;
+            updateUI();
+        }
+
+        function loseLife() {
+            lives--;
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                updateUI();
+            }
+        }
+
+        function gameOver() {
+            gameState = 'game-over';
+            gameOverScreen.style.display = 'flex';
+            document.getElementById('final-score').textContent = 'Final Score: ' + score;
+            document.getElementById('final-high-score').textContent = 'High Score: ' + highScore;
+
+            // Save score
+            window.parent.postMessage({
+                type: 'applaa-game-save-score',
+                gameId: 'fruit-slice',
+                playerName: playerName,
+                score: score
+            }, '*');
+        }
+
+        function updateUI() {
+            document.getElementById('score-display').textContent = 'Score: ' + score;
+            document.getElementById('lives-display').textContent = 'Lives: ' + lives;
+            document.getElementById('high-score-display').textContent = 'High Score: ' + highScore;
+        }
+
+        function isPointNearLine(px, py, line) {
+            for (let i = 0; i < line.length - 1; i++) {
+                const p1 = line[i];
+                const p2 = line[i + 1];
+                const dist = pointToLineDistance(px, py, p1.x, p1.y, p2.x, p2.y);
+                if (dist < 30) return true;
+            }
+            return false;
+        }
+
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            if (length === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (length * length)));
+            const closestX = x1 + t * dx;
+            const closestY = y1 + t * dy;
+            return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+        }
+
+        // Mouse/touch events
+        canvas.addEventListener('mousedown', startSlice);
+        canvas.addEventListener('mousemove', continueSlice);
+        canvas.addEventListener('mouseup', endSlice);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startSlice(e.touches[0]);
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            continueSlice(e.touches[0]);
+        });
+        canvas.addEventListener('touchend', endSlice);
+
+        function startSlice(e) {
+            if (gameState !== 'playing') return;
+            isSlicing = true;
+            sliceTrail = [];
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.pageX) - rect.left;
+            const y = (e.clientY || e.pageY) - rect.top;
+            sliceTrail.push({ x, y });
+        }
+
+        function continueSlice(e) {
+            if (!isSlicing || gameState !== 'playing') return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.pageX) - rect.left;
+            const y = (e.clientY || e.pageY) - rect.top;
+            sliceTrail.push({ x, y });
+        }
+
+        function endSlice() {
+            isSlicing = false;
+            combo = 0;
+        }
+
+        // Button events
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', () => {
+            gameState = 'playing';
+            gameOverScreen.style.display = 'none';
+            resetGame();
+            requestAnimationFrame(gameLoop);
+        });
+        mainMenuButton.addEventListener('click', () => {
+            gameState = 'start';
+            gameOverScreen.style.display = 'none';
+            startScreen.style.display = 'flex';
+        });
+        closeButton.addEventListener('click', () => window.close());
+        closeButtonGameOver.addEventListener('click', () => window.close());
+    </script>
+</body>
+</html>
